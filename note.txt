@@ -1,0 +1,7 @@
+python -m uvicorn main:app --reload    => for running
+python.exe -m pip install --upgrade pip
+requirements:
+!pip install -q -U google-generativeai
+!pip install langchain sentence-transformers -U langchain-community chromadb qdrant-client langchain_qdrant
+!pip install langchain_groq
+pip install -U :class:`~langchain-huggingface

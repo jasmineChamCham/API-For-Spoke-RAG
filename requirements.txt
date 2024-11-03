@@ -1,0 +1,12 @@
+fastapi
+google-generativeai
+langchain
+sentence-transformers
+langchain-community
+chromadb
+qdrant-client
+langchain_qdrant
+langchain_groq
+langchain-huggingface
+pandas
+numpy

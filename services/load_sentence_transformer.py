@@ -1,0 +1,5 @@
+from langchain_community.embeddings import SentenceTransformerEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
+
+def load_sentence_transformer(sentence_embedding_model):
+    return SentenceTransformerEmbeddings(model_name=sentence_embedding_model)
