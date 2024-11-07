@@ -35,7 +35,7 @@ def disease_entity_extractor(question):
     resp_text = chat_bot.invoke({"query": question})["result"]
 
     try:
-        json_part = resp_text[resp_text.rfind('{'):]
+        json_part = resp_text[resp_text.rfind('{') : (resp_text.rfind('}')+1)]
         entity_dict = json.loads(json_part)
         diseases = entity_dict.get("Diseases", [])
         return diseases
