@@ -116,6 +116,7 @@ def split_context(context):
 
 def save_context_qdrant(qdrant, embeddings_func, disease_name, context="", collection_name="CACHED_CONTEXT"):
     list_chunk_contexts = split_context(context)
+    list_vector_data = []
 
     for chunk_context in list_chunk_contexts:
         unique_id = generate_unique_id(disease_name, chunk_context)
@@ -129,14 +130,12 @@ def save_context_qdrant(qdrant, embeddings_func, disease_name, context="", colle
                 "context": chunk_context,
             }
         }
-
-        try:
-            qdrant.upsert(collection_name=collection_name, points=[vector_data])
-            return True  
-        except Exception as e:
-            print(f"Error upserting document in qdrant: {e}")
-            return False
-
+        list_vector_data.append(vector_data)
+    try:
+        qdrant.upsert(collection_name=collection_name, points=list_vector_data)
+    except Exception as e:
+        print(f"Error upserting document in qdrant: {e}")
+        
 def search_context_qdrant(qdrant, embeddings_func, disease_name, context="", collection_name="CACHED_CONTEXT"):
     data_embedding = embeddings_func.embed_documents([context])[0]
 
