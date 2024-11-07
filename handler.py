@@ -9,6 +9,7 @@ from services.load_sentence_transformer import load_sentence_transformer
 from services.cache_service import *
 from langchain.embeddings.sentence_transformer import SentenceTransformerEmbeddings
 import pandas as pd
+from transformers import pipeline
 
 config_data, system_prompts = getEnvVariables()
 
@@ -30,6 +31,8 @@ embedding_function_for_context_retrieval = load_sentence_transformer(SENTENCE_EM
 qdrant_context = qdrant_service.load_qdrant(collection_name = 'CACHED_CONTEXT', vector_size=768)
 retriever_context = qdrant_service.vector_data_qdrant(qdrant_context, embedding_function_for_context_retrieval, collection_name="CACHED_CONTEXT")
 
+qa_pipeline = pipeline("question-answering", model="distilbert-base-uncased-distilled-squad")
+
 def disease_entity_extractor(question):
     chat_bot = create_chat_bot(llm_groq, retriever) # chatbot llm_groq
     resp_text = chat_bot.invoke({"query": question})["result"]
@@ -42,25 +45,26 @@ def disease_entity_extractor(question):
     except  Exception as e:
         return []
 
+def get_relevance_score(question, context):
+    result = qa_pipeline(question=question, context=context)
+    print(f'result = {result}')
+    return result['score']  
 
 def retrieve_context(question, 
-                     embedding_function=embedding_function_for_context_retrieval, 
                      context_volume = CONTEXT_VOLUME, 
-                     context_sim_threshold=QUESTION_VS_CONTEXT_SIMILARITY_PERCENTILE_THRESHOLD, 
-                     context_sim_min_threshold=QUESTION_VS_CONTEXT_MINIMUM_SIMILARITY, 
                      edge_evidence=EDGE_EVIDENCE_FLAG):
     entities = disease_entity_extractor(question)
     list_diseases = []
     df = pd.DataFrame()
 
     if len(entities) > 0:
-        max_number_of_high_similarity_context_per_node = int(context_volume/len(entities))
+        max_number_of_relevant_contexts_per_node = int(context_volume/len(entities))
         for entity in entities:
             list_true_disease_names = get_true_disease_name(entity)
             list_diseases.extend(list_true_disease_names)
 
-        question_embedding = embedding_function.embed_query(question)
         node_context_extracted = ""
+        df_all = pd.DataFrame()
 
         for node_name in list_diseases:
             # Search in cache 
@@ -77,32 +81,43 @@ def retrieve_context(question,
 
             # compare similarity between question and each item of context => just get the ones with highest similarity score
             node_context_list = node_context.split('. ')
-            node_context_embeddings = embedding_function.embed_documents(node_context_list)
-            similarities = [cosine_similarity(np.array(question_embedding).reshape(1, -1), np.array(node_context_embedding).reshape(1, -1)) for node_context_embedding in node_context_embeddings]
-            similarities = sorted([(e, i) for i, e in enumerate(similarities)], reverse=True)
-            percentile_threshold = np.percentile([s[0] for s in similarities], context_sim_threshold)
-            high_similarity_indices = [s[1] for s in similarities if s[0] > percentile_threshold and s[0] > context_sim_min_threshold]
+            highest_relevant_ctx = []
+            highest_relevant_ctx_scores = []
 
-            if len(high_similarity_indices) > max_number_of_high_similarity_context_per_node:
-                high_similarity_indices = high_similarity_indices[:max_number_of_high_similarity_context_per_node]
-            high_similarity_context = [node_context_list[index] for index in high_similarity_indices]
+            # Calculate relevance scores for each context
+            for ctx in node_context_list:
+                score = get_relevance_score(question=question, context=ctx)
+                highest_relevant_ctx_scores.append(score)
+
+            percentile_threshold = np.percentile(highest_relevant_ctx_scores, 75)
+            print(f'percentile_threshold = {percentile_threshold}')
+
+            high_relevant_indices = [i for i, score in enumerate(highest_relevant_ctx_scores) if score > percentile_threshold and score > 0.5]
+
+            if len(high_relevant_indices) > max_number_of_relevant_contexts_per_node:
+                high_relevant_indices = high_relevant_indices[:max_number_of_relevant_contexts_per_node]
+            highest_relevant_ctx = [node_context_list[i] for i in high_relevant_indices]
+            print(f'highest_relevant_ctx = {highest_relevant_ctx}')
 
             if edge_evidence:
-                high_similarity_context = list(map(lambda x: x + '.', high_similarity_context))
-                df = df[df['context'].isin(high_similarity_context)]
+                highest_relevant_ctx = list(map(lambda x: x + '.', highest_relevant_ctx))
+                df = df[df['context'].isin(highest_relevant_ctx)]
                 df.loc[:, 'context_with_edge'] = df['source_type'] + " " + df['source_name'] + " " + df['predicate'].str.lower() + " " + df['target_type'] + " " + df['target_name'] + ' and Provenance of this association is ' + df['provenance'] + " and attributes associated with this association is in the following JSON format:\n " + df['evidence'].astype('str') + "\n\n"
                 node_context_extracted += df['context'].str.cat(sep=' ')
             else:
-                node_context_extracted += ". ".join(high_similarity_context)
+                node_context_extracted += ". ".join(highest_relevant_ctx)
                 node_context_extracted += ". "
 
             df.to_csv(f'./data/graph/graph_{node_name}.csv')
             save_df_neo4j(df)
 
+            if df_all.empty:
+                df_all = pd.concat([df_all, df.iloc[1:]], ignore_index=True)
+
             if cache_context == False:
                 save_context_qdrant(qdrant=qdrant_client, embeddings_func=embedding_function_for_context_retrieval, disease_name=node_name, context=node_context_extracted)
         
-        return node_context_extracted, df.to_dict(orient="records")
+        return node_context_extracted, df_all.to_dict(orient="records")
     else:
         return "UNKNOWN DISEASE", []
 
