@@ -1,5 +1,6 @@
 from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
+from langchain.chains import RetrievalQA
 
 groq_api_key = "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"
 llm_groq = ChatGroq(temperature=0,
@@ -22,8 +23,6 @@ def get_prompt(prompt_template, input_variables=[]):
         template=prompt_template, input_variables=input_variables
     )
     return prompt
-
-from langchain.chains import RetrievalQA
 
 def create_chat_bot(llm=llm_groq, retriever=[]):
     prompt = get_prompt(DISEASE_ENTITY_EXTRACTION_prompt, ["context", "question"])

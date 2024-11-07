@@ -6,6 +6,7 @@ from get_env_variables import getEnvVariables
 from services.spoke_service import get_context_using_spoke_api
 import numpy as np
 from services.load_sentence_transformer import load_sentence_transformer
+from services.cache_service import *
 
 config_data, system_prompts = getEnvVariables()
 
@@ -21,8 +22,8 @@ SENTENCE_EMBEDDING_MODEL_FOR_NODE_RETRIEVAL = config_data["SENTENCE_EMBEDDING_MO
 SENTENCE_EMBEDDING_MODEL_FOR_CONTEXT_RETRIEVAL = config_data["SENTENCE_EMBEDDING_MODEL_FOR_CONTEXT_RETRIEVAL"]
 
 
-client, embedding_model = qdrant_service.load_qdrant(SENTENCE_EMBEDDING_MODEL_FOR_NODE_RETRIEVAL)
-retriever = qdrant_service.vector_data_qdrant(client, embedding_model)
+mongo_client, embedding_model = qdrant_service.load_qdrant(SENTENCE_EMBEDDING_MODEL_FOR_NODE_RETRIEVAL)
+retriever = qdrant_service.vector_data_qdrant(mongo_client, embedding_model)
 chat_bot = create_chat_bot(llm_groq, retriever)
 embedding_function_for_context_retrieval = load_sentence_transformer(SENTENCE_EMBEDDING_MODEL_FOR_CONTEXT_RETRIEVAL)
 
@@ -36,7 +37,6 @@ def disease_entity_extractor(question):
         return diseases
     except  Exception as e:
         return str(e)
-
 
 def retrieve_context(question, 
                      embedding_function=embedding_function_for_context_retrieval, 
@@ -55,6 +55,14 @@ def retrieve_context(question,
         question_embedding = embedding_function.embed_query(question)
         node_context_extracted = ""
         for node_name in list_diseases:
+            # Search in cache 
+            cache_context = search_mongodb(node_name)
+            cache_graph = search_neighbors_neo4j(node_name)
+
+            if cache_context and cache_graph:
+                return cache_context['Context'], cache_graph
+
+            # Get the context when answer is not stored in cache
             node_context, df = get_context_using_spoke_api(node_name) # node_context here is context gained from all neighboring nodes.
 
             # compare similarity between question and each item of context => just get the ones with highest similarity score
@@ -77,5 +85,10 @@ def retrieve_context(question,
             else:
                 node_context_extracted += ". ".join(high_similarity_context)
                 node_context_extracted += ". "
-        return node_context_extracted, df
+
+            save_df_neo4j(df)
+            if cache_context is None:
+                save_context_mongodb(node_name, node_context_extracted)
+        
+        return node_context_extracted, df.to_dict(orient="records")
 

@@ -2,6 +2,7 @@ import requests
 import ast
 from get_env_variables import getEnvVariables
 import pandas as pd
+import json
 
 config_data, system_prompts = getEnvVariables()
 
@@ -13,9 +14,9 @@ def get_spoke_api_resp(base_uri, end_point, params=None):
         return requests.get(uri)
 
 def get_context_using_spoke_api(node_value):
-    type_end_point = "/api/v1/types"
-    result = get_spoke_api_resp(config_data['BASE_URI'], type_end_point)
-    data_spoke_types = result.json()
+    with open('./data/spoke_types.json', 'r') as file_spoke_types: # save the result from api /types
+        data_spoke_types = json.load(file_spoke_types)
+    
     node_types = list(data_spoke_types["nodes"].keys())
     edge_types = list(data_spoke_types["edges"].keys())
     node_types_to_remove = ["DatabaseTimestamp", "Version"]
@@ -39,6 +40,9 @@ def get_context_using_spoke_api(node_value):
     result = get_spoke_api_resp(config_data['BASE_URI'], nbr_end_point, params=api_params)
     node_context = result.json()
 
+    if (node_context == []):
+        return 'no_data', pd.DataFrame()
+    
     nbr_nodes = []
     nbr_edges = []
     for item in node_context:
@@ -77,6 +81,7 @@ def get_context_using_spoke_api(node_value):
             except:
                 evidence = None
             nbr_edges.append((item["data"]["source"], item["data"]["neo4j_type"], item["data"]["target"], provenance, evidence))
+    
     nbr_nodes_df = pd.DataFrame(nbr_nodes, columns=["node_type", "node_id", "node_name"])
     nbr_edges_df = pd.DataFrame(nbr_edges, columns=["source", "edge_type", "target", "provenance", "evidence"])
 

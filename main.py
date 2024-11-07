@@ -18,9 +18,9 @@ def generateBiomedicalResponse(question: str):
     """
     Endpoint for answer, context and context graph.
     """
-    question = 'Are there any latest drugs used for weight management in patients with Bardet-Biedl syndrome?'
+    # question = 'Are there any latest drugs used for weight management in patients with Bardet-Biedl syndrome?'
     
-    context, df  = retrieve_context(question)
+    context, graph  = retrieve_context(question)
 
     enriched_prompt = "Context: " + context + "\n" + "Question: " + question
     messages = [
@@ -29,7 +29,8 @@ def generateBiomedicalResponse(question: str):
     ]
     answer = llm_groq.invoke(messages)
 
-    return {
+    return  {
         'answer': answer.content,
-        'graph': df.to_dict(orient="records")
+        'graph': graph
     }
+
