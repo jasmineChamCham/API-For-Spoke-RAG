@@ -36,11 +36,16 @@ qa_pipeline = pipeline("question-answering", model="distilbert-base-uncased-dist
 def disease_entity_extractor(question):
     chat_bot = create_chat_bot(llm_groq, retriever) # chatbot llm_groq
     resp_text = chat_bot.invoke({"query": question})["result"]
+    print(f'resp_text = {resp_text}')
 
     try:
-        json_part = resp_text[resp_text.rfind('{'):]
+        json_part = resp_text[resp_text.rfind('{') : (resp_text.rfind('}')+1)]
         entity_dict = json.loads(json_part)
+        print(f'entity_dict = {entity_dict}')
+
         diseases = entity_dict.get("Diseases", [])
+        print(f'diseases = {diseases}')
+
         return diseases
     except  Exception as e:
         return []
@@ -90,14 +95,12 @@ def retrieve_context(question,
                 highest_relevant_ctx_scores.append(score)
 
             percentile_threshold = np.percentile(highest_relevant_ctx_scores, 75)
-            print(f'percentile_threshold = {percentile_threshold}')
 
-            high_relevant_indices = [i for i, score in enumerate(highest_relevant_ctx_scores) if score > percentile_threshold and score > 0.5]
+            high_relevant_indices = [i for i, score in enumerate(highest_relevant_ctx_scores) if score > percentile_threshold and score > 0.7]
 
             if len(high_relevant_indices) > max_number_of_relevant_contexts_per_node:
                 high_relevant_indices = high_relevant_indices[:max_number_of_relevant_contexts_per_node]
             highest_relevant_ctx = [node_context_list[i] for i in high_relevant_indices]
-            print(f'highest_relevant_ctx = {highest_relevant_ctx}')
 
             if edge_evidence:
                 highest_relevant_ctx = list(map(lambda x: x + '.', highest_relevant_ctx))
