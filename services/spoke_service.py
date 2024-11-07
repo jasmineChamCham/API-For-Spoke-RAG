@@ -5,6 +5,7 @@ import pandas as pd
 import json
 
 config_data, system_prompts = getEnvVariables()
+base_url = config_data['BASE_URI']
 
 def get_spoke_api_resp(base_uri, end_point, params=None):
     uri = base_uri + end_point
@@ -12,6 +13,16 @@ def get_spoke_api_resp(base_uri, end_point, params=None):
         return requests.get(uri, params=params)
     else:
         return requests.get(uri)
+
+def get_true_disease_name(disease_name):
+    endpoint = f"/api/v1/search/{disease_name}"  
+    diseases_res = get_spoke_api_resp(base_url, endpoint)
+    result = diseases_res.json()
+
+    disease_items= [item for item in result if  isinstance(item, dict) and item.get('node_type', '') == 'Disease' and item.get('score', 0) > 7]
+    highest_score_items = sorted(disease_items, key=lambda x: x['score'], reverse=True)[:2] # get maximum 2 items
+    highest_score_item_names = list(map(lambda x: x['name'], highest_score_items))
+    return highest_score_item_names
 
 def get_context_using_spoke_api(node_value):
     with open('./data/spoke_types.json', 'r') as file_spoke_types: # save the result from api /types
@@ -37,11 +48,11 @@ def get_context_using_spoke_api(node_value):
     node_type = "Disease"
     attribute = "name"
     nbr_end_point = "/api/v1/neighborhood/{}/{}/{}".format(node_type, attribute, node_value)
-    result = get_spoke_api_resp(config_data['BASE_URI'], nbr_end_point, params=api_params)
+    result = get_spoke_api_resp(base_url, nbr_end_point, params=api_params)
     node_context = result.json()
 
     if (node_context == []):
-        return 'no_data', pd.DataFrame()
+        return "UNKNOWN DISEASE", pd.DataFrame()
     
     nbr_nodes = []
     nbr_edges = []

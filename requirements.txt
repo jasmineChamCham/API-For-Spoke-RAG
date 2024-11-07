@@ -1,13 +1,24 @@
-fastapi
-google-generativeai
-langchain
-sentence-transformers
-langchain-community
-qdrant-client
-langchain_qdrant
-langchain_groq
-langchain-huggingface
-pandas
-numpy
-pymongo[srv]
+# fastapi
+# google-generativeai
+# langchain
+# sentence-transformers
+# langchain-community
+# qdrant-client
+# langchain_qdrant
+# langchain_groq
+# langchain-huggingface
+# pandas
+# numpy
+# pymongo[srv]
+# pydantic 2.9.2
 # python -m pip install "pymongo[srv]"
+
+pydantic==2.9.2
+langchain==0.2.16
+langchain-qdrant==0.1.4
+langchain-text-splitters==0.2.4
+langchain-groq==0.1.10
+langchain_core==0.2.41
+langchain-huggingface==0.0.2
+langchain-community==0.2.12
+flashrank==0.2.9

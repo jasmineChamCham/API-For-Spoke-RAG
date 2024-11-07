@@ -2,6 +2,18 @@ from neo4j import GraphDatabase
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 import json
+import uuid
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=100,
+    chunk_overlap=20,
+    length_function=len,
+    is_separator_regex=False,
+)
+
+def generate_unique_id(disease_name, context):
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, f'{disease_name}_{context}'))
 
 # DB Neo4j Connection
 uri = "bolt://localhost:7687" 
@@ -10,15 +22,14 @@ password = "Ngoctram123"
 driver = GraphDatabase.driver(uri, auth=(username, password))
 
 # MongoDB Connection
-uri = "mongodb+srv://jasminebkdn:Ngoctram123@kgmongocontextcache.sihqh.mongodb.net/?retryWrites=true&w=majority&appName=KGMongoContextCache"
-mongo_client = MongoClient(uri, server_api=ServerApi('1'))
-try:
-    mongo_client.admin.command('ping')
-    print("Pinged your deployed MongoDB. You successfully connected to KG Cache Context MongoDB!")
-    db_mongo = mongo_client["KG_MongoDB"]  
-    collection_mongo = db_mongo["Cache_Context_MongoDB"] 
-except Exception as e:
-    print(e)
+# uri = "mongodb+srv://jasminebkdn:Ngoctram123@kgmongocontextcache.sihqh.mongodb.net/?retryWrites=true&w=majority&appName=KGMongoContextCache"
+# qdrant_client = MongoClient(uri, server_api=ServerApi('1'))
+# try:
+#     qdrant_client.admin.command('ping')
+#     db_mongo = qdrant_client["KG_MongoDB"]  
+#     collection_mongo = db_mongo["Cache_Context_MongoDB"] 
+# except Exception as e:
+#     print(e)
 
 def create_nodes_and_relationships(tx, row):
     source_type = row['source_type']
@@ -51,7 +62,6 @@ def create_nodes_and_relationships(tx, row):
          provenance=row['provenance'], evidence=evidence, predicate=row['predicate'],
          context=row['context'], context_with_edge=context_with_edge)
     
-         
 def save_df_neo4j(df):
     with driver.session() as session:
         for _, row in df.iterrows():
@@ -95,11 +105,55 @@ def search_neighbors_neo4j(node_name):
                 **target_renamed, 
                 **relationship
             }
-            print(json.dumps(data, indent=5))
             cached_graph.append(data)
 
         return cached_graph
+    
+def split_context(context):
+    if (len(context) > 0):
+        documents = text_splitter.create_documents([context])
+        return list(map(lambda x: x.page_content, documents))
 
+def save_context_qdrant(qdrant, embeddings_func, disease_name, context="", collection_name="CACHED_CONTEXT"):
+    list_chunk_contexts = split_context(context)
+
+    for chunk_context in list_chunk_contexts:
+        unique_id = generate_unique_id(disease_name, chunk_context)
+        data_embedding = embeddings_func.embed_documents([chunk_context])[0]
+
+        vector_data = {
+            "id": unique_id,
+            "vector": data_embedding,
+            "payload": {
+                "disease_name": disease_name,
+                "context": chunk_context,
+            }
+        }
+
+        try:
+            qdrant.upsert(collection_name=collection_name, points=[vector_data])
+            return True  
+        except Exception as e:
+            print(f"Error upserting document in qdrant: {e}")
+            return False
+
+def search_context_qdrant(qdrant, embeddings_func, disease_name, context="", collection_name="CACHED_CONTEXT"):
+    data_embedding = embeddings_func.embed_documents([context])[0]
+
+    results = qdrant.search(
+        collection_name=collection_name,
+        query_vector=data_embedding,
+        limit=3  
+    )
+
+    context_qdrant_exists = any(
+        result.payload.get("disease_name", {}) == disease_name 
+        for result in results
+    )
+
+    if context_qdrant_exists:
+        return True
+    return False 
 
 def save_context_mongodb(node_name, node_context_extracted): # node_name = disease name
     data = {
@@ -107,11 +161,8 @@ def save_context_mongodb(node_name, node_context_extracted): # node_name = disea
         'Context': node_context_extracted
     }
     collection_mongo.insert_one(data)
-    print("Inserted context document of the disease:", data)
 
 def search_mongodb(disease_name):
     query = {"Disease Name": disease_name}
     result = collection_mongo.find_one(query)
-
-    print(f'result from search cached context from mongodb: {result}')
     return result
