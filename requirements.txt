@@ -22,4 +22,5 @@ langchain_core==0.2.41
 langchain-huggingface==0.0.2
 langchain-community==0.2.12
 flashrank==0.2.9
+langchain-openai==0.1.22
 transformers

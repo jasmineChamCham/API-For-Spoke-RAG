@@ -31,7 +31,7 @@ qdrant_context = qdrant_service.load_qdrant(collection_name = 'CACHED_CONTEXT', 
 retriever_context = qdrant_service.vector_data_qdrant(qdrant_context, embedding_function_for_context_retrieval, collection_name="CACHED_CONTEXT")
 
 def disease_entity_extractor(question):
-    chat_bot = create_chat_bot(llm_groq, retriever) # chatbot llm_groq
+    chat_bot = create_chat_bot(llmGPT, retriever) # chatbot OpenAI
     resp_text = chat_bot.invoke({"query": question})["result"]
 
     try:
